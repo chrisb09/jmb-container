@@ -1,52 +1,44 @@
-FROM alpine:3
+# Stage 1: Build the JMusicBot with Maven and JDK
+FROM alpine:3 AS builder
 
 LABEL maintainer="chrisb09 <mail@christian-f-brinkmann.de>"
 
-ARG BUILD_DATE
-ARG VCS_REF
-
-LABEL org.label-schema.schema-version="1.0"
-LABEL org.label-schema.build-date=$BUILD_DATE
-LABEL org.label-schema.name="chrisb09/jmusicbot"
-LABEL org.label-schema.description="Java based Discord music bot"
-LABEL org.label-schema.url="https://github.com/chrisb09/MusicBot"
-LABEL org.label-schema.vcs-url="https://github.com/chrisb09/jmb-container"
-LABEL org.label-schema.vcs-ref=$VCS_REF
-LABEL org.label-schema.docker.cmd="docker run -v ./config:/jmb/config -d chrisb09/jmusicbot"
-
 # Install necessary packages including Maven and JDK
-RUN apk add --update --no-cache \
-    openjdk11-jre-headless \
+RUN apk add --no-cache \
     openjdk11 \
     maven \
-    su-exec \
-    git \
-    tini && \
-    mkdir -p /jmb/config
+    git
 
 # Clone the repository and build the project
 RUN git clone https://github.com/chrisb09/MusicBot.git /jmb/MusicBot && \
     cd /jmb/MusicBot && \
-    mvn clean package && cp target/JMusicBot-Snapshot-All.jar /jmb/JMusicBot.jar
+    mvn clean package
 
-RUN chmod -R 755 /jmb/config && chown -R 10000:10001 /jmb/config
+# Stage 2: Prepare a minimal runtime environment with just the JRE
+FROM alpine:3
 
-RUN mkdir /jmb/reference
+# Install the necessary runtime environment (JRE only)
+RUN apk add --no-cache openjdk11-jre-headless su-exec tini
 
-RUN cp /jmb/MusicBot/src/main/resources/reference.conf /jmb/reference/config.txt
+# Copy the compiled jar from the build stage
+COPY --from=builder /jmb/MusicBot/target/JMusicBot-Snapshot-All.jar /jmb/JMusicBot.jar
+COPY --from=builder /jmb/MusicBot/src/main/resources/reference.conf /jmb/reference/config.txt
 
-RUN chmod -R 755 /jmb/reference && chown -R 10000:10001 /jmb/reference
-
-RUN cd / && rm -rf /jmb/MusicBot  # Cleanup after building
+# Create necessary directories and set permissions
+RUN mkdir -p /jmb/config && \
+    chmod -R 755 /jmb/config /jmb/reference && \
+    chown -R 10000:10001 /jmb/config /jmb/reference
 
 COPY --chmod=755 ./docker-entrypoint.sh /jmb
 
+# Set up volume for external config
 VOLUME /jmb/config
 
+# Add user and group
 RUN addgroup -S appgroup -g 10001 && \
     adduser -S appuser -G appgroup -u 10000
 
-# Required to ensure the entry point script has the necessary permissions
+# Switch to root for entrypoint permissions
 USER 0
 
 WORKDIR /jmb/config
