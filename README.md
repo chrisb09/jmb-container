@@ -5,4 +5,4 @@
 
 A containerized version of the [JMusicBot by jagrosh](https://github.com/chrisb09/MusicBot).
 
-As this image is compiling from source, it is a bit larger than other images...
+Should you intend to build the image yourself, be advised that this includes compiling the project from source, hence it takes a bit longer.
